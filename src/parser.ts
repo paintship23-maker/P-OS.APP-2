@@ -365,22 +365,17 @@ function compileExteriorMaterials(ew: ExteriorWork, fallbackVendors?: Vendor[]):
   const out: MaterialItem[] = [];
   let idx = 0;
 
-  // Track which exterior treatments exist so we only generate exterior materials
-  // (never interior ones like Economy Emulsion / Interior Primer).
+  // Derive from canonical finishingSteps (Putty Coat, Primer Coat, Paint/Finish)
+  // instead of raw treatment names, so every exterior coating gets its own BOM
+  // line item — even when treatment labels use non-standard wording.
   const hasExteriorPrimer = sides.some((s) =>
-    (s.treatments ?? []).some((t) =>
-      /exterior\s*primer|weathercoat\s*primer|primer\s*coat|primer/i.test(t.name ?? ''),
-    ),
+    (s.finishingSteps ?? []).some((step) => /primer/i.test(step.name ?? '')),
   );
   const hasExteriorPutty = sides.some((s) =>
-    (s.treatments ?? []).some((t) =>
-      /putty|filler|crack\s*filing/i.test(t.name ?? ''),
-    ),
+    (s.finishingSteps ?? []).some((step) => /putty/i.test(step.name ?? '')),
   );
   const hasExteriorEmulsion = sides.some((s) =>
-    (s.treatments ?? []).some((t) =>
-      /exterior\s*emulsion|exterior\s*paint|weathercoat\s*finish|emulsion|premium\s*exterior/i.test(t.name ?? ''),
-    ),
+    (s.finishingSteps ?? []).some((step) => /emulsion|paint|finish/i.test(step.name ?? '')),
   );
 
   // Helper to pick a fallback vendor for a given category

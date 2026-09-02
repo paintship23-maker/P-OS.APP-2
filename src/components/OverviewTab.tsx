@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import type { PaintProject, ProjectWorkflowStatus, MaterialItem, ExteriorSide, WoodAndMetalItem, WallpaperItem, TextureItem, Supervisor, QaRecord, TaskStatus } from '@/types';
 import { computeMetrics, fmtNum, fmtINR, fmtPct, getRoomArea, isExteriorFloor } from '@/utils';
-import { Camera, CheckCircle2, Info } from 'lucide-react';
+import { Camera, CircleCheck as CheckCircle2, Info } from 'lucide-react';
 
 type DrilldownView = 'interior' | 'exterior' | 'joinery' | 'materials';
 
@@ -957,22 +957,23 @@ function SitePhotoAndQaProofLog({ qaRecords, floors }: { qaRecords: QaRecord[]; 
 
 function FloorAccordion({ floor, sides }: { floor: NonNullable<PaintProject['floors'][number]>; sides?: ExteriorSide[] }) {
   const [open, setOpen] = useState(true);
-  const isExt = sides != null;
+  const isExt = isExteriorFloor(floor);
   const rooms = floor.rooms ?? [];
 
-  const totalSqft = isExt
-    ? (sides ?? []).reduce((acc, side) => acc + (side.netSqft ?? side.areaSqft ?? 0), 0)
-    : rooms.reduce((sum, r) => sum + (r.totalSqft ?? r.interiorSqft ?? 0), 0);
-  const totalSteps = isExt
-    ? (sides ?? []).reduce((sum, side) => sum + ((side.finishingSteps?.length ?? 0) || 0), 0)
-    : rooms.reduce((sum, r) => sum + (r.finishingSteps?.length ?? 0), 0);
-  const enabledSteps = isExt
-    ? (sides ?? []).reduce(
-        (sum, side) => sum + (side.finishingSteps?.filter((s) => s.status === 'COMPLETED').length ?? 0),
-        0,
-      )
-    : rooms.reduce((sum, r) => sum + (r.finishingSteps?.filter((s) => s.enabled).length ?? 0), 0);
-  const cardCount = isExt ? (sides ?? []).length : rooms.length;
+  // Always compute from the floor's own rooms so the header sqft matches the
+  // sum of the cards below — regardless of whether the floor is interior,
+  // exterior, or generated tasks.
+  const totalSqft = rooms.reduce(
+    (sum, r) => sum + getRoomArea(r, isExt),
+    0,
+  );
+  const totalSteps = rooms.reduce(
+    (sum, r) => sum + (r.finishingSteps?.length ?? 0), 0,
+  );
+  const completedSteps = rooms.reduce(
+    (sum, r) => sum + (r.finishingSteps?.filter((s) => s.status === 'COMPLETED').length ?? 0), 0,
+  );
+  const cardCount = rooms.length;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
@@ -986,24 +987,22 @@ function FloorAccordion({ floor, sides }: { floor: NonNullable<PaintProject['flo
           <span className="text-xs text-slate-400">{cardCount} {isExt ? 'elevations' : 'rooms'} · {fmtNum(totalSqft)} sqft</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{fmtPct(enabledSteps, totalSteps)}</span>
+          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{fmtPct(completedSteps, totalSteps)}</span>
           <ChevronDown size={15} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
         </div>
       </button>
       {open && (
         <div className="grid gap-3 border-t border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-3 dark:border-slate-800">
           {isExt
-            ? (sides ?? []).map((side) => {
-                const displayArea = (side.netSqft ?? side.areaSqft ?? 0) ||
-                  (side.finishingSteps && side.finishingSteps[0]?.targetSqft) ||
-                  (side.finishingSteps && side.finishingSteps[0]?.stepSqft) ||
-                  0;
-                const completedCount = side.finishingSteps?.filter((s) => s.status === 'COMPLETED').length || 0;
-                const totalCount = side.finishingSteps?.length || 3;
+            ? rooms.map((room) => {
+                const steps = room.finishingSteps ?? [];
+                const completedCount = steps.filter((s) => s.status === 'COMPLETED').length;
+                const totalCount = steps.length;
+                const displayArea = getRoomArea(room, true);
                 const pct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
                 return (
-                  <div key={side.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{side.label ?? side.name}</p>
+                  <div key={room.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{room.name}</p>
                     <div className="mt-1 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                       <span>{fmtNum(displayArea)} sqft</span>
                       <span>·</span>
@@ -1017,19 +1016,20 @@ function FloorAccordion({ floor, sides }: { floor: NonNullable<PaintProject['flo
               })
             : rooms.map((room) => {
                 const steps = room.finishingSteps ?? [];
-                const enabledSteps = steps.filter((s) => s.enabled).length;
-                const totalSteps = steps.length;
-                const displayArea = room.sqft || room.totalSqft || room.netWallSqft || (room.finishingSteps && room.finishingSteps[0]?.targetSqft) || 0;
+                const completedCount = steps.filter((s) => s.status === 'COMPLETED').length;
+                const totalCount = steps.length;
+                const displayArea = getRoomArea(room, false);
+                const pct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
                 return (
                   <div key={room.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{room.name}</p>
                     <div className="mt-1 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                       <span>{fmtNum(displayArea)} sqft</span>
                       <span>·</span>
-                      <span>{enabledSteps}/{totalSteps} steps</span>
+                      <span>{completedCount}/{totalCount} steps</span>
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                      <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${totalSteps > 0 ? (enabledSteps / totalSteps) * 100 : 0}%` }} />
+                      <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );

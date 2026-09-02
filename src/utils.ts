@@ -1,4 +1,4 @@
-import type { TaskStatus, PaintProject, Floor, Room, FinishingStep, OrderStatus, ExteriorSide } from './types';
+import type { TaskStatus, PaintProject, Floor, Room, FinishingStep, OrderStatus, ExteriorSide, MaterialItem, Vendor } from './types';
 
 export interface StatusStyle {
   badge: string;
@@ -243,7 +243,7 @@ const sm = project.summaryMetrics ?? {};
       completedTasks,
       inProgressTasks,
       pendingTasks,
-      overallPct: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      overallPct: totalTasks > 0 ? Math.round(((completedTasks + inProgressTasks * 0.5) / totalTasks) * 100) : 0,
     };
 }
 
@@ -727,4 +727,85 @@ export function filterExteriorMaterials<T extends { name?: string; category?: st
 /** Filter a material list to only interior coatings and supplies. */
 export function filterInteriorMaterials<T extends { name?: string; category?: string }>(materials: T[]): T[] {
   return materials.filter(isInteriorMaterial);
+}
+
+/**
+ * Ensure a project's materialBillOfQuantities includes separate line items for
+ * Exterior Putty (kg) and Exterior Primer (L), computed from the canonical
+ * finishingSteps on the Exterior floor's rooms.  Demo data and older imports
+ * only carried a single "Exterior Emulsion" line, so this fills in the missing
+ * putty/primer lines idempotently without clobbering existing materials.
+ */
+export function ensureExteriorMaterials(project: PaintProject): PaintProject {
+  const exteriorFloor = (project.floors ?? []).find((f) => isExteriorFloor(f));
+  if (!exteriorFloor) return project;
+
+  const hasPuttyStep = (exteriorFloor.rooms ?? []).some((r) =>
+    (r.finishingSteps ?? []).some((s) => /putty/i.test(s.name ?? '')),
+  );
+  const hasPrimerStep = (exteriorFloor.rooms ?? []).some((r) =>
+    (r.finishingSteps ?? []).some((s) => /primer/i.test(s.name ?? '')),
+  );
+  if (!hasPuttyStep && !hasPrimerStep) return project;
+
+  const totalArea = (exteriorFloor.rooms ?? []).reduce(
+    (sum, r) => sum + getRoomArea(r, true),
+    0,
+  );
+  if (totalArea <= 0) return project;
+
+  const existing = project.materialBillOfQuantities ?? [];
+  const hasPuttyMaterial = existing.some((m) =>
+    /exterior\s*putty/i.test(m.name ?? '') || (m.category === 'Exterior Putty'),
+  );
+  const hasPrimerMaterial = existing.some((m) =>
+    /exterior\s*primer/i.test(m.name ?? '') || (m.category === 'Exterior Primer'),
+  );
+
+  const additions: MaterialItem[] = [];
+  if (hasPuttyStep && !hasPuttyMaterial) {
+    additions.push({
+      id: `extmat-putty-${project.id}`,
+      name: 'Exterior Putty: 2 coats',
+      category: 'Exterior Putty',
+      brand: 'Birla White',
+      totalRequiredQty: Math.round(totalArea * 0.05 * 100) / 100,
+      unit: 'kg',
+      packSize: '40kg',
+      unitCost: 150,
+    });
+  }
+  if (hasPrimerStep && !hasPrimerMaterial) {
+    additions.push({
+      id: `extmat-primer-${project.id}`,
+      name: 'Exterior Primer: 1 coat',
+      category: 'Exterior Primer',
+      brand: 'Berger',
+      totalRequiredQty: Math.round(totalArea * 0.08 * 100) / 100,
+      unit: 'L',
+      packSize: '20L',
+      unitCost: 250,
+    });
+  }
+
+  if (additions.length === 0) return project;
+
+  const vendors = project.vendors ?? [];
+  additions.forEach((m) => {
+    if (vendors.length > 0) {
+      const preferred = vendors.find((v) =>
+        (v.brands ?? []).some((b) =>
+          (m.brand ?? '').toLowerCase().includes(b.toLowerCase()),
+        ),
+      );
+      m.vendorName = preferred?.storeName ?? vendors[0]?.storeName;
+      if (preferred) m.vendorId = preferred.id;
+    }
+  });
+
+  return {
+    ...project,
+    materialBillOfQuantities: [...existing, ...additions],
+    materials: [...(project.materials ?? existing), ...additions],
+  };
 }

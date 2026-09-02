@@ -5,7 +5,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTheme } from '@/components/useTheme';
 import { demoProjects } from '@/demoData';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { cleanupStaleBase64FromStorage, ensureExteriorFloors } from '@/utils';
+import { cleanupStaleBase64FromStorage, ensureExteriorFloors, ensureExteriorMaterials } from '@/utils';
 
 function App() {
   const [projects, setProjects] = useState<PaintProject[]>(() => {
@@ -23,13 +23,13 @@ function App() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Migration: materialize Exterior walls as a navigable floor/zone so
           // exterior tasks appear in the Supervisor panel & Painter Portal.
-          return ensureExteriorFloors(parsed);
+          return ensureExteriorFloors(parsed).map(ensureExteriorMaterials);
         }
       }
     } catch (e) {
       console.error('Error parsing projects from localStorage', e);
     }
-    return ensureExteriorFloors(demoProjects);
+    return ensureExteriorFloors(demoProjects).map(ensureExteriorMaterials);
   });
 
   const { theme, toggle } = useTheme();
