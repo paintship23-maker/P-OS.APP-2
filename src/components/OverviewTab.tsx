@@ -29,8 +29,8 @@ import {
   Users,
 } from 'lucide-react';
 import type { PaintProject, ProjectWorkflowStatus, MaterialItem, ExteriorSide, WoodAndMetalItem, WallpaperItem, TextureItem, Supervisor, QaRecord, TaskStatus } from '@/types';
-import { computeMetrics, fmtNum, fmtINR, fmtPct, getRoomArea, isExteriorFloor } from '@/utils';
-import { Camera, CheckCircle2, Info } from 'lucide-react';
+import { computeMetrics, fmtNum, fmtINR, fmtPct, getRoomArea, isExteriorFloor, deduplicateMaterials } from '@/utils';
+import { Camera, CircleCheck as CheckCircle2, Info } from 'lucide-react';
 
 type DrilldownView = 'interior' | 'exterior' | 'joinery' | 'materials';
 
@@ -110,7 +110,7 @@ export function OverviewTab({ project, onRaisePurchaseOrder, onSetLeadSupervisor
 
   const workflowIdx = WORKFLOW_STEPS.indexOf(workflowStatus);
 
-  const materials = project.materialBillOfQuantities ?? [];
+  const materials = deduplicateMaterials(project.materialBillOfQuantities ?? []);
   const bomTotal = materials.reduce((sum, m) => sum + (m.totalRequiredQty ?? 0) * (m.unitCost ?? 0), 0);
 
   return (

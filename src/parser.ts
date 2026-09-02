@@ -19,6 +19,31 @@ import type {
 } from './types';
 import { ensureExteriorFloor, isExteriorFloor, computeEstimatedDays, addWorkingDays } from './utils';
 
+/**
+ * Aggregate material line items by name + category, summing quantities and
+ * keeping the first non-empty brand/vendor/unit. Prevents duplicate BOM entries
+ * from imported JSON + computed materials.
+ */
+function deduplicateMaterials(materials: MaterialItem[]): MaterialItem[] {
+  const map = new Map<string, MaterialItem>();
+  for (const m of materials) {
+    const key = `${(m.name ?? '').toLowerCase().trim()}|${(m.category ?? '').toLowerCase().trim()}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...m });
+    } else {
+      existing.totalRequiredQty = Math.round(((existing.totalRequiredQty ?? 0) + (m.totalRequiredQty ?? 0)) * 100) / 100;
+      if (!existing.brand && m.brand) existing.brand = m.brand;
+      if (!existing.vendorName && m.vendorName) existing.vendorName = m.vendorName;
+      if (!existing.vendorId && m.vendorId) existing.vendorId = m.vendorId;
+      if (!existing.unit && m.unit) existing.unit = m.unit;
+      if (!existing.packSize && m.packSize) existing.packSize = m.packSize;
+      if (!existing.unitCost && m.unitCost) existing.unitCost = m.unitCost;
+    }
+  }
+  return Array.from(map.values());
+}
+
 const VALID_STATUSES: TaskStatus[] = ['NOT_STARTED', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'PENDING_INSPECTION', 'COMPLETED'];
 const VALID_JOINERY: JoineryType[] = ['DOOR', 'WINDOW', 'GRILL', 'SHUTTER', 'OTHER'];
 
@@ -399,9 +424,14 @@ function compileExteriorMaterials(ew: ExteriorWork, fallbackVendors?: Vendor[]):
     return match ?? byDistance[0];
   };
 
+  // Coverage formulas (real-world):
+  //   Exterior Primer:  totalArea / 120  (Litres, 1 coat)
+  //   Exterior Putty:   totalArea / 15   (kg, 2 coats)
+  //   Exterior Emulsion: totalArea / 55  (Litres, 2 coats)
+
   // Exterior Primer (1 coat)
   if (hasExteriorPrimer) {
-    const qty = Math.round(totalArea * 0.08 * 100) / 100;
+    const qty = Math.round((totalArea / 120) * 100) / 100;
     const v = pickVendor('Exterior Primer');
     out.push({
       id: uid('extmat', idx++),
@@ -422,7 +452,7 @@ function compileExteriorMaterials(ew: ExteriorWork, fallbackVendors?: Vendor[]):
 
   // Exterior Putty (2 coats)
   if (hasExteriorPutty) {
-    const qty = Math.round(totalArea * 0.05 * 100) / 100;
+    const qty = Math.round((totalArea / 15) * 100) / 100;
     const v = pickVendor('Exterior Putty');
     out.push({
       id: uid('extmat', idx++),
@@ -443,7 +473,7 @@ function compileExteriorMaterials(ew: ExteriorWork, fallbackVendors?: Vendor[]):
 
   // Exterior Emulsion (2 coats)
   if (hasExteriorEmulsion) {
-    const qty = Math.round(totalArea * 0.12 * 100) / 100;
+    const qty = Math.round((totalArea / 55) * 100) / 100;
     const v = pickVendor('Exterior Emulsion');
     out.push({
       id: uid('extmat', idx++),
@@ -464,7 +494,7 @@ function compileExteriorMaterials(ew: ExteriorWork, fallbackVendors?: Vendor[]):
 
   // If nothing matched, fall back to a generic Exterior Emulsion for the total area
   if (out.length === 0) {
-    const defaultQty = Math.round(totalArea * 0.12 * 100) / 100;
+    const defaultQty = Math.round((totalArea / 55) * 100) / 100;
     const v = pickVendor('Exterior Emulsion');
     out.push({
       id: uid('extmat', 0),
@@ -802,44 +832,87 @@ export function parseProjectJson(raw: unknown): PaintProject {
 
   const exteriorMaterials = compileExteriorMaterials(exteriorParsed, vendorsParsed);
 
-  function compilePuttyMaterials(floors: Floor[]): MaterialItem[] {
+  function compileInteriorMaterials(floors: Floor[]): MaterialItem[] {
+    // Coverage formulas (real-world):
+    //   Interior Putty:   sqft / 15   (kg)
+    //   Interior Primer:  sqft / 140  (Litres)
+    //   Interior Emulsion: sqft / 120 (Litres, 2 coats)
     let totalPuttySqft = 0;
+    let totalPrimerSqft = 0;
+    let totalEmulsionSqft = 0;
     for (const f of floors) {
       if (isExteriorFloor(f)) continue;
       for (const r of f.rooms) {
         if (r.isExterior) continue;
         for (const s of r.finishingSteps) {
           if (s.isExterior) continue;
-          if (s.name.toLowerCase().includes('putty')) {
-            totalPuttySqft += s.stepSqft ?? r.interiorSqft ?? 0;
-          }
+          const stepArea = s.stepSqft ?? r.interiorSqft ?? 0;
+          const lower = s.name.toLowerCase();
+          if (lower.includes('putty')) totalPuttySqft += stepArea;
+          else if (lower.includes('primer')) totalPrimerSqft += stepArea;
+          else if (lower.includes('emulsion') || lower.includes('paint') || lower.includes('finish') || lower.includes('coat')) totalEmulsionSqft += stepArea;
         }
       }
     }
-    if (totalPuttySqft <= 0) return [];
-    const qty = Math.round(totalPuttySqft * 0.06 * 100) / 100;
-    return [{
-      id: uid('putty', 0),
-      name: 'Wall Putty',
-      category: 'Putty',
-      brand: undefined,
-      totalRequiredQty: qty,
-      unit: 'kg',
-      packSize: '40kg',
-      vendorName: undefined,
-      orderedQty: undefined,
-      deliveredQty: undefined,
-      orderStatus: undefined,
-      unitCost: 25,
-    } satisfies MaterialItem];
+    const out: MaterialItem[] = [];
+    if (totalPuttySqft > 0) {
+      out.push({
+        id: uid('intputty', 0),
+        name: 'Wall Putty',
+        category: 'Putty',
+        brand: 'Birla White',
+        totalRequiredQty: Math.round((totalPuttySqft / 15) * 100) / 100,
+        unit: 'kg',
+        packSize: '40kg',
+        vendorName: undefined,
+        orderedQty: undefined,
+        deliveredQty: undefined,
+        orderStatus: undefined,
+        unitCost: 25,
+      } satisfies MaterialItem);
+    }
+    if (totalPrimerSqft > 0) {
+      out.push({
+        id: uid('intprimer', 0),
+        name: 'Interior Primer',
+        category: 'Primer',
+        brand: 'Asian Paints',
+        totalRequiredQty: Math.round((totalPrimerSqft / 140) * 100) / 100,
+        unit: 'L',
+        packSize: '20L',
+        vendorName: undefined,
+        orderedQty: undefined,
+        deliveredQty: undefined,
+        orderStatus: undefined,
+        unitCost: 180,
+      } satisfies MaterialItem);
+    }
+    if (totalEmulsionSqft > 0) {
+      out.push({
+        id: uid('intemulsion', 0),
+        name: 'Interior Emulsion Paint',
+        category: 'Emulsion',
+        brand: 'Asian Paints',
+        totalRequiredQty: Math.round((totalEmulsionSqft / 120) * 100) / 100,
+        unit: 'L',
+        packSize: '20L',
+        vendorName: undefined,
+        orderedQty: undefined,
+        deliveredQty: undefined,
+        orderStatus: undefined,
+        unitCost: 520,
+      } satisfies MaterialItem);
+    }
+    return out;
   }
 
   function compileSpecialMaterials(specials: SpecialFeatures, joinery: WoodAndMetalItem[]): MaterialItem[] {
     const out: MaterialItem[] = [];
     let idx = 0;
+    // Enamel / Oil Paint / Water-based Wood Coating: ~100 sqft per Litre (2 coats)
     for (const w of joinery) {
       const sqft = w.totalSqft ?? 0;
-      const qty = Math.round(sqft * 100) / 100;
+      const qty = Math.round((sqft / 100) * 10) / 10;
       if (qty <= 0) continue;
       out.push({
         id: uid('joinmat', idx++),
@@ -896,9 +969,9 @@ export function parseProjectJson(raw: unknown): PaintProject {
     return out;
   }
 
-  const puttyMaterials = compilePuttyMaterials(floorsParsed);
+  const interiorMaterials = compileInteriorMaterials(floorsParsed);
   const specialMaterials = compileSpecialMaterials(specialsParsed, woodAndMetalParsed);
-  const allMaterials = [...materialsParsed, ...exteriorMaterials, ...puttyMaterials, ...specialMaterials];
+  const allMaterials = deduplicateMaterials([...materialsParsed, ...exteriorMaterials, ...interiorMaterials, ...specialMaterials]);
 
   // Assign fallback vendors to materials missing a vendor, using the nearest vendor
   // from the project's vendor list (by distanceKm).
