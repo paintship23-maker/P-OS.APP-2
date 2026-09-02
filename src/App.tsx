@@ -24,8 +24,15 @@ function App() {
           // Migration: materialize Exterior walls as a navigable floor/zone so
           // exterior tasks appear in the Supervisor panel & Painter Portal.
           return ensureExteriorFloors(parsed).map((p) => {
-            const days = computeEstimatedDays(p);
-            const start = p.projectDetails.startDate ?? new Date().toISOString().split('T')[0];
+            const sourceDays = p.projectDetails.estimatedDays ?? 0;
+            const totalSqft = (p.interiorSqft ?? 0) + (p.exteriorSqft ?? 0)
+              + (p.woodAndMetalItems ?? []).reduce((s, i) => s + (i.totalSqft ?? 0), 0)
+              + (p.specialFeatures?.wallpapers ?? []).reduce((s, w) => s + (w.totalSqft ?? w.areaSqft ?? 0), 0)
+              + (p.specialFeatures?.textures ?? []).reduce((s, t) => s + (t.totalSqft ?? t.areaSqft ?? 0), 0);
+            const computed = computeEstimatedDays(p);
+            const shouldOverride = totalSqft > 1000 && sourceDays < 5;
+            const days = shouldOverride || sourceDays === 0 ? computed : sourceDays;
+            const start = p.projectDetails.startDate ?? p.projectDetails.createdAt ?? new Date().toISOString().split('T')[0];
             return {
               ...p,
               projectDetails: {
@@ -42,8 +49,15 @@ function App() {
       console.error('Error parsing projects from localStorage', e);
     }
     return ensureExteriorFloors(demoProjects).map((p) => {
-      const days = computeEstimatedDays(p);
-      const start = p.projectDetails.startDate ?? new Date().toISOString().split('T')[0];
+      const sourceDays = p.projectDetails.estimatedDays ?? 0;
+      const totalSqft = (p.interiorSqft ?? 0) + (p.exteriorSqft ?? 0)
+        + (p.woodAndMetalItems ?? []).reduce((s, i) => s + (i.totalSqft ?? 0), 0)
+        + (p.specialFeatures?.wallpapers ?? []).reduce((s, w) => s + (w.totalSqft ?? w.areaSqft ?? 0), 0)
+        + (p.specialFeatures?.textures ?? []).reduce((s, t) => s + (t.totalSqft ?? t.areaSqft ?? 0), 0);
+      const computed = computeEstimatedDays(p);
+      const shouldOverride = totalSqft > 1000 && sourceDays < 5;
+      const days = shouldOverride || sourceDays === 0 ? computed : sourceDays;
+      const start = p.projectDetails.startDate ?? p.projectDetails.createdAt ?? new Date().toISOString().split('T')[0];
       return {
         ...p,
         projectDetails: {

@@ -82,18 +82,14 @@ export function fmtINR(n: number | undefined): string {
 }
 
 /**
- * Compute realistic estimated project duration from labour effort.
+ * Compute realistic estimated project duration from total work scope.
  *
- * Productivity rates (sqft per manday):
- *   Interior painting (putty + primer + 2 coats):  300 sqft/manday
- *   Exterior painting (putty + primer + 2 coats):  250 sqft/manday
- *   Joinery / metal (enamel, 4-step):               80 sqft/manday
- *   Texture & wallpaper:                             150 sqft/manday
- *
- * Total man-days are divided by crew size (default 3 workers) to get
- * calendar days, with a minimum of 1 day.
+ * Total SqFt = interior + exterior + joinery/metal + special features (wallpaper + texture).
+ * Standard multi-coat painting output: 120 sqft per manday.
+ * Crew size is read from summaryMetrics.estimatedWorkersPerDay (default 2).
+ * Computed Days = max(3, ceil(Total SqFt / 120 / Crew Size)).
  */
-export function computeEstimatedDays(project: PaintProject, crewSize = 3): number {
+export function computeEstimatedDays(project: PaintProject): number {
   let interiorSqft = 0;
   let exteriorSqft = 0;
 
@@ -121,14 +117,11 @@ export function computeEstimatedDays(project: PaintProject, crewSize = 3): numbe
   );
   const specialSqft = wallpaperSqft + textureSqft;
 
-  const interiorManDays = interiorSqft / 300;
-  const exteriorManDays = exteriorSqft / 250;
-  const joineryManDays = joinerySqft / 80;
-  const specialManDays = specialSqft / 150;
-
-  const totalManDays = interiorManDays + exteriorManDays + joineryManDays + specialManDays;
-  const days = Math.ceil(totalManDays / Math.max(1, crewSize));
-  return Math.max(1, days);
+  const totalSqft = interiorSqft + exteriorSqft + joinerySqft + specialSqft;
+  const crewSize = project.summaryMetrics?.estimatedWorkersPerDay ?? 2;
+  const manDaysRequired = totalSqft / 120;
+  const days = Math.ceil(manDaysRequired / Math.max(1, crewSize));
+  return Math.max(3, days);
 }
 
 /** Add `workingDays` calendar days to an ISO date string (skipping Sundays). */

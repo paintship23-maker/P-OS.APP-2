@@ -1013,14 +1013,16 @@ export function parseProjectJson(raw: unknown): PaintProject {
   // ensureExteriorFloor handles building and attaching canonical exterior rooms cleanly.
   const withExterior = ensureExteriorFloor(withGenerated);
 
-  // Recompute estimated days from actual scope if the source value is missing
-  // or implausibly low (less than 1 day per 500 sqft of total scope).
+  // Override JSON estimated days when implausibly low: if the source value is
+  // less than 5 days for a project over 1000 sqft, recompute from actual scope.
   const sourceDays = withExterior.projectDetails.estimatedDays ?? 0;
   const computedDays = computeEstimatedDays(withExterior);
-  const minReasonable = totalSqftResolved > 0 ? Math.ceil(totalSqftResolved / 500) : 1;
-  const finalDays = sourceDays >= minReasonable ? sourceDays : Math.max(computedDays, minReasonable);
+  const shouldOverride = totalSqftResolved > 1000 && sourceDays < 5;
+  const finalDays = shouldOverride || sourceDays === 0 ? computedDays : sourceDays;
 
-  const startDateStr = withExterior.projectDetails.startDate ?? new Date().toISOString().split('T')[0];
+  const startDateStr = withExterior.projectDetails.startDate
+    ?? withExterior.projectDetails.createdAt
+    ?? new Date().toISOString().split('T')[0];
   const computedEndDate = addWorkingDays(startDateStr, finalDays);
 
   return {
@@ -1028,7 +1030,7 @@ export function parseProjectJson(raw: unknown): PaintProject {
     projectDetails: {
       ...withExterior.projectDetails,
       estimatedDays: finalDays,
-      endDate: withExterior.projectDetails.endDate ?? computedEndDate,
+      endDate: computedEndDate,
     },
     summaryMetrics: {
       ...withExterior.summaryMetrics,

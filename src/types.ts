@@ -164,6 +164,7 @@ export interface SummaryMetrics {
   totalExteriorSqft?: number;
   totalDoorsWindowsQty?: number;
   estimatedTotalDays?: number;
+  estimatedWorkersPerDay?: number;
 }
 
 export interface ExteriorTreatment {
