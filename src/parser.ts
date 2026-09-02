@@ -17,7 +17,7 @@ import type {
   Vendor,
   SurfaceType,
 } from './types';
-import { ensureExteriorFloor, isExteriorFloor } from './utils';
+import { ensureExteriorFloor, isExteriorFloor, computeEstimatedDays, addWorkingDays } from './utils';
 
 const VALID_STATUSES: TaskStatus[] = ['NOT_STARTED', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'PENDING_INSPECTION', 'COMPLETED'];
 const VALID_JOINERY: JoineryType[] = ['DOOR', 'WINDOW', 'GRILL', 'SHUTTER', 'OTHER'];
@@ -928,7 +928,7 @@ export function parseProjectJson(raw: unknown): PaintProject {
     (exteriorParsed.totalAreaSqft ?? 0);
 
   const estimatedDaysResolved = asNum(sm.estimatedTotalDays) ?? asNum(pd.estimatedDays) ?? asNum(pd.duration) ??
-    (totalSqftResolved > 0 ? Math.ceil(totalSqftResolved / 100) : 30);
+    (totalSqftResolved > 0 ? Math.max(1, Math.ceil(totalSqftResolved / 100)) : 30);
 
   const materialCostEstimate = allMaterials.reduce((s, m) => s + (m.totalRequiredQty ?? 0) * (m.unitCost ?? 0), 0);
   const laborCostEstimate = totalSqftResolved > 0 ? Math.round(totalSqftResolved * 12) : 0;
@@ -1012,5 +1012,27 @@ export function parseProjectJson(raw: unknown): PaintProject {
   // Exterior walls/areas arrive in exteriorWork.sides[].
   // ensureExteriorFloor handles building and attaching canonical exterior rooms cleanly.
   const withExterior = ensureExteriorFloor(withGenerated);
-  return withExterior;
+
+  // Recompute estimated days from actual scope if the source value is missing
+  // or implausibly low (less than 1 day per 500 sqft of total scope).
+  const sourceDays = withExterior.projectDetails.estimatedDays ?? 0;
+  const computedDays = computeEstimatedDays(withExterior);
+  const minReasonable = totalSqftResolved > 0 ? Math.ceil(totalSqftResolved / 500) : 1;
+  const finalDays = sourceDays >= minReasonable ? sourceDays : Math.max(computedDays, minReasonable);
+
+  const startDateStr = withExterior.projectDetails.startDate ?? new Date().toISOString().split('T')[0];
+  const computedEndDate = addWorkingDays(startDateStr, finalDays);
+
+  return {
+    ...withExterior,
+    projectDetails: {
+      ...withExterior.projectDetails,
+      estimatedDays: finalDays,
+      endDate: withExterior.projectDetails.endDate ?? computedEndDate,
+    },
+    summaryMetrics: {
+      ...withExterior.summaryMetrics,
+      estimatedTotalDays: finalDays,
+    },
+  };
 }

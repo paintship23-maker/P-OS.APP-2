@@ -81,6 +81,67 @@ export function fmtINR(n: number | undefined): string {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
+/**
+ * Compute realistic estimated project duration from labour effort.
+ *
+ * Productivity rates (sqft per manday):
+ *   Interior painting (putty + primer + 2 coats):  300 sqft/manday
+ *   Exterior painting (putty + primer + 2 coats):  250 sqft/manday
+ *   Joinery / metal (enamel, 4-step):               80 sqft/manday
+ *   Texture & wallpaper:                             150 sqft/manday
+ *
+ * Total man-days are divided by crew size (default 3 workers) to get
+ * calendar days, with a minimum of 1 day.
+ */
+export function computeEstimatedDays(project: PaintProject, crewSize = 3): number {
+  let interiorSqft = 0;
+  let exteriorSqft = 0;
+
+  for (const floor of project.floors ?? []) {
+    const isExt = isExteriorFloor(floor);
+    for (const room of floor.rooms ?? []) {
+      const area = getRoomArea(room, isExt);
+      if (isExt || room.isExterior) exteriorSqft += area;
+      else interiorSqft += area;
+    }
+  }
+
+  const joinerySqft = (project.woodAndMetalItems ?? []).reduce(
+    (sum, item) => sum + (item.totalSqft ?? 0),
+    0,
+  );
+
+  const wallpaperSqft = (project.specialFeatures?.wallpapers ?? []).reduce(
+    (sum, w) => sum + (w.totalSqft ?? w.areaSqft ?? 0),
+    0,
+  );
+  const textureSqft = (project.specialFeatures?.textures ?? []).reduce(
+    (sum, t) => sum + (t.totalSqft ?? t.areaSqft ?? 0),
+    0,
+  );
+  const specialSqft = wallpaperSqft + textureSqft;
+
+  const interiorManDays = interiorSqft / 300;
+  const exteriorManDays = exteriorSqft / 250;
+  const joineryManDays = joinerySqft / 80;
+  const specialManDays = specialSqft / 150;
+
+  const totalManDays = interiorManDays + exteriorManDays + joineryManDays + specialManDays;
+  const days = Math.ceil(totalManDays / Math.max(1, crewSize));
+  return Math.max(1, days);
+}
+
+/** Add `workingDays` calendar days to an ISO date string (skipping Sundays). */
+export function addWorkingDays(startDate: string, days: number): string {
+  const d = new Date(startDate);
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0) added++;
+  }
+  return d.toISOString().split('T')[0];
+}
+
 export function compressImageBase64(
   base64Str: string,
   maxWidth = 800,
