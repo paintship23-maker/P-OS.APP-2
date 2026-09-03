@@ -190,24 +190,10 @@ export function PainterPortal({
     return result;
   }, [project, painter.id]);
 
-  // Backlog: incomplete tasks from previous days or rejected tasks
+  // Backlog: only tasks explicitly flagged as rejected/rework by a supervisor
   const backlogTasks = useMemo(() => {
-    return assignedTasks.filter(t => {
-      const isRejected = t.step.photoAuditStatus === 'REJECTED';
-      const isScheduledForToday = project.dailyTargets?.some(tgt => tgt.stepId === t.step.id && tgt.date === todayISO());
-      
-      // Incomplete status
-      const isIncomplete = t.step.status !== 'COMPLETED' && t.step.status !== 'PENDING_INSPECTION';
-      
-      // Past incomplete: not scheduled for today, but was previously assigned or started
-      const wasStarted = t.step.status === 'IN_PROGRESS' || t.step.status === 'PAUSED';
-      const hasPastTarget = project.dailyTargets?.some(tgt => tgt.stepId === t.step.id && tgt.date < todayISO());
-      
-      const isPastIncomplete = !isScheduledForToday && isIncomplete && (wasStarted || hasPastTarget);
-      
-      return isRejected || isPastIncomplete;
-    });
-  }, [assignedTasks, project.dailyTargets]);
+    return assignedTasks.filter(t => t.step.photoAuditStatus === 'REJECTED');
+  }, [assignedTasks]);
 
   // Today's schedule: tasks assigned for today
   const todayTasks = useMemo(() => {

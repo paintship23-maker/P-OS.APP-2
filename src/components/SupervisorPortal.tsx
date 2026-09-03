@@ -823,7 +823,11 @@ export function SupervisorPortal({
                     <div className="text-left">
                       <p className="text-sm font-black">{floor.name}</p>
                       <p className={`text-[10px] font-bold uppercase tracking-tighter ${openFloors.has(floor.id) ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                        {floor.rooms.length} Rooms • {floor.rooms.reduce((acc, r) => acc + r.finishingSteps.length, 0)} Steps
+                        {floor.id === 'floor-generated-tasks'
+                          ? `${floor.rooms.length} Items (Joinery & Special) • ${floor.rooms.reduce((acc, r) => acc + r.finishingSteps.length, 0)} Steps`
+                          : floor.isExterior || floor.id === 'floor-exterior'
+                            ? `${floor.rooms.length} Elevations • ${floor.rooms.reduce((acc, r) => acc + r.finishingSteps.length, 0)} Steps`
+                            : `${floor.rooms.length} Rooms • ${floor.rooms.reduce((acc, r) => acc + r.finishingSteps.length, 0)} Steps`}
                       </p>
                     </div>
                     <ChevronDown size={14} className={`transition-transform ${openFloors.has(floor.id) ? 'rotate-180 text-white' : 'text-zinc-500'}`} />
@@ -837,6 +841,19 @@ export function SupervisorPortal({
                   .filter(f => openFloors.has(f.id))
                   .map(floor => (
                     <div key={floor.id} className="space-y-4">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                        floor.id === 'floor-generated-tasks'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          : floor.isExterior || floor.id === 'floor-exterior'
+                            ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+                            : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'
+                      }`}>
+                        {floor.id === 'floor-generated-tasks'
+                          ? '[ WOOD, METAL & SPECIAL JOINERY ]'
+                          : floor.isExterior || floor.id === 'floor-exterior'
+                            ? '[ EXTERIOR ELEVATIONS ]'
+                            : '[ INTERIOR WALLS & CEILINGS ]'}
+                      </div>
                       {floor.rooms.map(room => (
                         <div key={room.id} className="rounded-2xl border border-slate-100 bg-slate-50/50 overflow-hidden dark:border-slate-800 dark:bg-slate-800/20">
                           <button
