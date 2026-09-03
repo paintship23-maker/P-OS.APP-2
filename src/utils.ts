@@ -864,10 +864,20 @@ export function ensureExteriorMaterials(project: PaintProject): PaintProject {
   };
 }
 
+const COATING_CATEGORIES = new Set([
+  'putty',
+  'primer',
+  'emulsion',
+  'exterior putty',
+  'exterior primer',
+  'exterior emulsion',
+]);
+
 export function deduplicateMaterials(materials: MaterialItem[]): MaterialItem[] {
   const map = new Map<string, MaterialItem>();
   for (const m of materials) {
-    const key = `${(m.name ?? '').toLowerCase().trim()}|${(m.category ?? '').toLowerCase().trim()}`;
+    const cat = (m.category ?? '').toLowerCase().trim();
+    const key = COATING_CATEGORIES.has(cat) ? cat : `${(m.name ?? '').toLowerCase().trim()}|${cat}`;
     const existing = map.get(key);
     if (!existing) {
       map.set(key, { ...m });

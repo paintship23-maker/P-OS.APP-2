@@ -29,7 +29,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { PaintProject, ProjectWorkflowStatus, MaterialItem, ExteriorSide, WoodAndMetalItem, WallpaperItem, TextureItem, Supervisor, QaRecord, TaskStatus } from '@/types';
-import { computeMetrics, fmtNum, fmtINR, fmtPct, getRoomArea, isExteriorFloor, deduplicateMaterials } from '@/utils';
+import { computeMetrics, computeEstimatedDays, fmtNum, fmtINR, fmtPct, getRoomArea, isExteriorFloor, deduplicateMaterials } from '@/utils';
 import { Camera, CircleCheck as CheckCircle2, Info } from 'lucide-react';
 
 type DrilldownView = 'interior' | 'exterior' | 'joinery' | 'materials';
@@ -175,7 +175,7 @@ export function OverviewTab({ project, onRaisePurchaseOrder, onSetLeadSupervisor
               <div className="grid grid-cols-2 gap-3">
                 <TimelineCard icon={<CalendarDays size={16} />} label="Start Date" value={pd.startDate ?? '—'} />
                 <TimelineCard icon={<CalendarDays size={16} />} label="End Date" value={pd.endDate ?? '—'} />
-                <TimelineCard icon={<Clock size={16} />} label="Estimated Days" value={`${pd.estimatedDays ?? '—'} days`} />
+                <TimelineCard icon={<Clock size={16} />} label="Estimated Days" value={`${pd.estimatedDays ?? computeEstimatedDays(project) ?? '—'} days`} />
                 <TimelineCard
                   icon={<Clock size={16} />}
                   label="Actual Days"

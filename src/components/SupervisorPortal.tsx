@@ -846,7 +846,7 @@ export function SupervisorPortal({
                             <div className="flex items-center gap-3">
                               <ChevronDown size={16} className={`text-zinc-500 transition-transform ${openRooms.has(room.id) ? 'rotate-180 text-brand-500' : ''}`} />
                               <span className="text-sm font-black text-zinc-100">
-                                 {floor.name} — {room.name} <span className="text-zinc-500 font-bold ml-1 text-[11px] uppercase tracking-widest">({room.exteriorSqft || room.interiorSqft || 0} sqft)</span>
+                                 {floor.name} — {room.name} <span className="text-zinc-500 font-bold ml-1 text-[11px] uppercase tracking-widest">({room.totalSqft || room.sqft || room.exteriorSqft || room.interiorSqft || 0} sqft)</span>
                               </span>
                             </div>
                             <div className="flex items-center gap-4 text-[10px] font-black uppercase text-brand-500 tracking-widest">
