@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { CircleUser as UserCircle2, Layers, Brush, Play, Pause, CircleCheck as CheckCircle2, Ruler, Target, Camera, X, ClipboardCheck, LogIn, LogOut, Coffee, MapPin, Timer, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { PaintProject, Painter, FinishingStep, TaskStatus, DailyTarget, ClockState } from '@/types';
 import { ErrorBoundary } from './ErrorBoundary';
-import { todayISO, compressImageBase64 } from '@/utils';
+import { todayISO, compressImageBase64, distributeTasksIntoSlots, estimateHours, getStepProductivity, maxDailySqft } from '@/utils';
 
 interface PainterPortalProps {
   project: PaintProject;
@@ -195,9 +195,14 @@ export function PainterPortal({
     return assignedTasks.filter(t => t.step.photoAuditStatus === 'REJECTED');
   }, [assignedTasks]);
 
-  // Today's schedule: tasks assigned for today
+  // Today's schedule: tasks assigned for today (via daily targets OR scheduledDate on the step)
   const todayTasks = useMemo(() => {
-    return assignedTasks.filter(t => project.dailyTargets?.some(tgt => tgt.stepId === t.step.id && tgt.date === todayISO()));
+    const today = todayISO();
+    return assignedTasks.filter(t => {
+      const hasDailyTarget = project.dailyTargets?.some(tgt => tgt.stepId === t.step.id && tgt.date === today);
+      const isScheduledToday = t.step.scheduledDate === today;
+      return hasDailyTarget || isScheduledToday;
+    });
   }, [assignedTasks, project.dailyTargets]);
 
   // Group today's tasks into slots based on cumulative estimated hours

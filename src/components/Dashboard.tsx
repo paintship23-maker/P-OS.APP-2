@@ -643,6 +643,7 @@ export function Dashboard({ projects, onProjectsChange }: DashboardProps) {
     roomId: string,
     stepId: string,
     targetSqft: number,
+    targetHours?: number,
   ) => {
     const label = describeStep(floorId, roomId, stepId);
     const painterName = painters.find((p) => p.id === painterId)?.name ?? painterId;
@@ -653,6 +654,7 @@ export function Dashboard({ projects, onProjectsChange }: DashboardProps) {
       roomId,
       stepId,
       targetSqft,
+      targetHours,
       date: todayISO(),
       status: 'ASSIGNED',
       assignedAt: Date.now(),
@@ -685,6 +687,7 @@ export function Dashboard({ projects, onProjectsChange }: DashboardProps) {
                                 assignedAt: step.assignedAt ?? Date.now(),
                                 assignedBy: activeSupervisor?.name ?? step.assignedBy,
                                 targetSqft: targetSqft > 0 ? targetSqft : step.targetSqft,
+                                targetHours: targetHours ?? step.targetHours,
                                 // Allocated for today → make it today's agenda item.
                                 scheduledDate: todayISO(),
                               },

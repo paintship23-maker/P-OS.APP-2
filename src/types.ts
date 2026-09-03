@@ -51,6 +51,8 @@ export interface FinishingStep {
   approvedAt?: number;
   /** Target area (sqft) the step is expected to cover — resolved from room/side area when absent. */
   targetSqft?: number;
+  /** Supervisor-allocated target hours (manual override of system estimate). */
+  targetHours?: number;
   /** True for steps generated from the imported exteriorWork block. */
   isExterior?: boolean;
   /** Originating exterior treatment id (when isExterior). */
@@ -306,6 +308,8 @@ export interface DailyTarget {
   roomId: string;
   stepId: string;
   targetSqft: number;
+  /** Supervisor-allocated target hours (manual override of system estimate). */
+  targetHours?: number;
   date: string;
   achievedSqft?: number;
   status: 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';

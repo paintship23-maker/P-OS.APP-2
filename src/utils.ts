@@ -76,6 +76,83 @@ export function fmtPct(part: number, whole: number): string {
   return `${Math.round((part / whole) * 100)}%`;
 }
 
+export const PAINTER_DAILY_CAPACITY_HOURS = 7;
+export const PAINTER_SLOT_HOURS = 4;
+
+export interface ProductivityRate { sqftPerHour: number; label: string; }
+
+const PRODUCTIVITY_RATES: { match: RegExp; sqftPerHour: number; label: string }[] = [
+  { match: /putty/i, sqftPerHour: 35, label: 'Putty' },
+  { match: /sanding/i, sqftPerHour: 35, label: 'Sanding' },
+  { match: /cleaning|prep/i, sqftPerHour: 50, label: 'Prep' },
+  { match: /primer/i, sqftPerHour: 100, label: 'Primer' },
+  { match: /emulsion|paint|finish|coat|touchup|texture/i, sqftPerHour: 80, label: 'Paint/Emulsion' },
+  { match: /wallpaper/i, sqftPerHour: 60, label: 'Wallpaper' },
+  { match: /enamel|wood|metal|joinery|door|window|grill/i, sqftPerHour: 40, label: 'Wood/Metal' },
+  { match: /qa|inspection/i, sqftPerHour: 200, label: 'QA' },
+];
+
+export function getStepProductivity(stepName: string | undefined): ProductivityRate {
+  const name = (stepName ?? '').toLowerCase();
+  for (const r of PRODUCTIVITY_RATES) {
+    if (r.match.test(name)) return { sqftPerHour: r.sqftPerHour, label: r.label };
+  }
+  return { sqftPerHour: 60, label: 'General' };
+}
+
+export function estimateHours(stepName: string | undefined, sqft: number): number {
+  if (sqft <= 0) return 0;
+  const rate = getStepProductivity(stepName);
+  return Math.round((sqft / rate.sqftPerHour) * 10) / 10;
+}
+
+export function maxDailySqft(stepName: string | undefined): number {
+  return getStepProductivity(stepName).sqftPerHour * PAINTER_DAILY_CAPACITY_HOURS;
+}
+
+export function maxSlotSqft(stepName: string | undefined): number {
+  return getStepProductivity(stepName).sqftPerHour * PAINTER_SLOT_HOURS;
+}
+
+export interface SlotDistribution<T> {
+  slotId: number;
+  time: string;
+  tasks: T[];
+  hoursUsed: number;
+  hoursRemaining: number;
+}
+
+export function distributeTasksIntoSlots<
+  T extends { step: FinishingStep; targetSqft?: number; roomInteriorSqft?: number }
+>(tasks: T[]): SlotDistribution<T>[] {
+  if (tasks.length === 0) return [];
+  const slot1: T[] = [];
+  const slot2: T[] = [];
+  let slot1Hours = 0;
+  let slot2Hours = 0;
+
+  for (const t of tasks) {
+    const sqft = t.targetSqft ?? t.step.stepSqft ?? t.roomInteriorSqft ?? 0;
+    const hours = estimateHours(t.step.name, sqft);
+    if (slot1Hours + hours <= PAINTER_SLOT_HOURS) {
+      slot1.push(t);
+      slot1Hours += hours;
+    } else {
+      slot2.push(t);
+      slot2Hours += hours;
+    }
+  }
+
+  const slots: SlotDistribution<T>[] = [];
+  if (slot1.length > 0) {
+    slots.push({ slotId: 1, time: '09:00 AM - 01:00 PM', tasks: slot1, hoursUsed: Math.round(slot1Hours * 10) / 10, hoursRemaining: Math.round((PAINTER_SLOT_HOURS - slot1Hours) * 10) / 10 });
+  }
+  if (slot2.length > 0) {
+    slots.push({ slotId: 2, time: '01:30 PM - 04:30 PM', tasks: slot2, hoursUsed: Math.round(slot2Hours * 10) / 10, hoursRemaining: Math.round((PAINTER_SLOT_HOURS - slot2Hours) * 10) / 10 });
+  }
+  return slots;
+}
+
 export function fmtINR(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return '—';
   return `₹${n.toLocaleString('en-IN')}`;

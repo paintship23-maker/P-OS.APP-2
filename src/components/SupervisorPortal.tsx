@@ -41,7 +41,7 @@ interface SupervisorPortalProps {
   onPainterAssign: (floorId: string, roomId: string, stepId: string, painterIds: string[]) => void;
   onUpdateTaskStep: (floorId: string, roomId: string, stepId: string, updates: Partial<FinishingStep>) => void;
   onQaApprove: (floorId: string, roomId: string, stepId: string, form: QaForm) => void;
-  onAssignDailyTarget: (painterId: string, floorId: string, roomId: string, stepId: string, targetSqft: number) => void;
+  onAssignDailyTarget: (painterId: string, floorId: string, roomId: string, stepId: string, targetSqft: number, targetHours?: number) => void;
   onTogglePainterCheckIn: (painterId: string) => void;
   onClockChange: (painterId: string, state: ClockState) => void;
   onPhotoAudit: (floorId: string, roomId: string, stepId: string, approved: boolean) => void;
@@ -1791,13 +1791,14 @@ function DailyTargetAllocatorModal({
   project: PaintProject;
   painters: Painter[];
   onClose: () => void;
-  onAssign: (painterId: string, floorId: string, roomId: string, stepId: string, targetSqft: number) => void;
+  onAssign: (painterId: string, floorId: string, roomId: string, stepId: string, targetSqft: number, targetHours?: number) => void;
 }) {
   const [selectedPainter, setSelectedPainter] = useState<string>(painters[0]?.id ?? '');
   const [selectedFloor, setSelectedFloor] = useState<string>('');
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [selectedStep, setSelectedStep] = useState<string>('');
   const [targetSqft, setTargetSqft] = useState<number>(0);
+  const [targetHours, setTargetHours] = useState<number>(0);
   const [warningAlert, setWarningAlert] = useState<string | null>(null);
 
   const floors = project.floors ?? [];
@@ -1835,6 +1836,8 @@ function DailyTargetAllocatorModal({
       const roomArea = selectedRoomObj?.totalSqft ?? selectedRoomObj?.netWallSqft ?? selectedRoomObj?.interiorSqft ?? selectedRoomObj?.exteriorSqft ?? selectedRoomObj?.sqft ?? 0;
       const stepArea = step.stepSqft ?? roomArea;
       if (stepArea) setTargetSqft(stepArea);
+      // Pre-fill target hours with system recommendation
+      setTargetHours(estimateHours(step.name, stepArea || 0));
     }
   };
 
@@ -1858,9 +1861,10 @@ function DailyTargetAllocatorModal({
       return;
     }
 
-    onAssign(selectedPainter, selectedFloor, selectedRoom, selectedStep, targetSqft);
+    onAssign(selectedPainter, selectedFloor, selectedRoom, selectedStep, targetSqft, targetHours || undefined);
     setSelectedStep('');
     setTargetSqft(0);
+    setTargetHours(0);
     setWarningAlert(null);
   };
 
@@ -1872,8 +1876,7 @@ function DailyTargetAllocatorModal({
   const productivityRate = getStepProductivity(stepName);
   const estimatedHrs = estimateHours(stepName, targetSqft);
   const dailyMaxSqft = maxDailySqft(stepName);
-  const isOverCapacity = targetSqft > dailyMaxSqft;
-  // Sum existing targets for this painter today
+  // Sum existing targets for this painter today (reference only, never blocks)
   const painterExistingHours = (project.dailyTargets ?? [])
     .filter((t) => t.painterId === selectedPainter && t.date === todayISO() && t.stepId !== selectedStep)
     .reduce((sum, t) => {
@@ -1887,8 +1890,7 @@ function DailyTargetAllocatorModal({
       }
       return sum + estimateHours(existingStepName, t.targetSqft);
     }, 0);
-  const totalHoursWithNew = painterExistingHours + estimatedHrs;
-  const isShiftExceeded = totalHoursWithNew > PAINTER_DAILY_CAPACITY_HOURS;
+  const totalHoursWithNew = painterExistingHours + (targetHours || estimatedHrs);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -2051,12 +2053,36 @@ function DailyTargetAllocatorModal({
             <input
               type="number"
               value={targetSqft === 0 ? '' : targetSqft}
-              onChange={(e) => setTargetSqft(parseInt(e.target.value) || 0)}
+              onChange={(e) => {
+                const sqft = parseInt(e.target.value) || 0;
+                setTargetSqft(sqft);
+                // Auto-update hours recommendation when sqft changes
+                if (sqft > 0) setTargetHours(estimateHours(stepName, sqft));
+              }}
               min={0}
               placeholder="e.g. 500"
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-brand-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
-            {/* Productivity & Capacity Info */}
+            {/* Allocated Target Hours (editable override) */}
+            {selectedStep && targetSqft > 0 && (
+              <div className="mt-3">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <Timer size={12} className="mr-1 inline" />
+                  Allocated Target Hours
+                  <span className="ml-1.5 text-[10px] font-normal text-slate-400">(system suggests {estimatedHrs}h — adjust for site conditions)</span>
+                </label>
+                <input
+                  type="number"
+                  value={targetHours === 0 ? '' : targetHours}
+                  onChange={(e) => setTargetHours(parseFloat(e.target.value) || 0)}
+                  min={0}
+                  step={0.5}
+                  placeholder={`e.g. ${estimatedHrs}`}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-brand-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
+              </div>
+            )}
+            {/* Productivity & Capacity Info (reference only, never blocks) */}
             {selectedStep && targetSqft > 0 && (
               <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
                 <div className="flex items-center justify-between text-xs">
@@ -2064,29 +2090,13 @@ function DailyTargetAllocatorModal({
                   <span className="font-bold text-slate-700 dark:text-slate-200">{productivityRate.sqftPerHour} sqft/hr</span>
                 </div>
                 <div className="mt-1.5 flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Est. Hours Required</span>
-                  <span className="font-bold text-brand-600 dark:text-brand-400">{estimatedHrs} hrs</span>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Painter Daily Max</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Painter Daily Max (reference)</span>
                   <span className="font-bold text-slate-700 dark:text-slate-200">{dailyMaxSqft} sqft ({PAINTER_DAILY_CAPACITY_HOURS}h shift)</span>
                 </div>
                 <div className="mt-1.5 flex items-center justify-between text-xs">
                   <span className="font-medium text-slate-500 dark:text-slate-400">Painter Total Today (incl. new)</span>
-                  <span className={}>{Math.round(totalHoursWithNew * 10) / 10} / {PAINTER_DAILY_CAPACITY_HOURS} hrs</span>
+                  <span className="text-slate-700 dark:text-slate-200">{Math.round(totalHoursWithNew * 10) / 10} / {PAINTER_DAILY_CAPACITY_HOURS} hrs</span>
                 </div>
-                {isOverCapacity && (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-red-50 px-2.5 py-1.5 text-[10px] font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
-                    <AlertTriangle size={12} />
-                    Target exceeds daily capacity of {dailyMaxSqft} sqft for this step type!
-                  </div>
-                )}
-                {isShiftExceeded && !isOverCapacity && (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-[10px] font-bold text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
-                    <AlertTriangle size={12} />
-                    Painter shift full: {Math.round(totalHoursWithNew * 10) / 10}h exceeds {PAINTER_DAILY_CAPACITY_HOURS}h daily limit!
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -2098,7 +2108,7 @@ function DailyTargetAllocatorModal({
           </button>
           <button
             onClick={handleAssign}
-            disabled={!selectedPainter || !selectedStep || targetSqft <= 0 || Boolean(isStepBlocked) || isOverCapacity || isShiftExceeded}
+            disabled={!selectedPainter || !selectedStep || targetSqft <= 0 || Boolean(isStepBlocked)}
             className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:bg-brand-600 active:scale-[0.98] disabled:opacity-50"
           >
             <Plus size={15} />
