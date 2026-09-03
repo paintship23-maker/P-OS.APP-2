@@ -200,14 +200,9 @@ export function PainterPortal({
     return assignedTasks.filter(t => project.dailyTargets?.some(tgt => tgt.stepId === t.step.id && tgt.date === todayISO()));
   }, [assignedTasks, project.dailyTargets]);
 
-  // Group today's tasks into slots
+  // Group today's tasks into slots based on cumulative estimated hours
   const slots = useMemo(() => {
-    if (todayTasks.length === 0) return [];
-    const mid = Math.ceil(todayTasks.length / 2);
-    return [
-      { id: 1, time: "09:00 AM - 01:00 PM", tasks: todayTasks.slice(0, mid) },
-      { id: 2, time: "01:30 PM - 04:30 PM", tasks: todayTasks.slice(mid) }
-    ];
+    return distributeTasksIntoSlots(todayTasks);
   }, [todayTasks]);
 
   const handleStartWork = (t: typeof assignedTasks[0]) => {
@@ -322,10 +317,11 @@ export function PainterPortal({
         ) : (
           <div className="relative space-y-8 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
             {slots.map((slot) => (
-              <div key={slot.id} className="relative pl-10">
+              <div key={slot.slotId} className="relative pl-10">
                 <div className="absolute left-[13px] top-2 h-2.5 w-2.5 rounded-full border-2 border-slate-900 bg-brand-500 ring-4 ring-brand-500/10" />
                 <div className="mb-4">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Slot {slot.id}: {slot.time}</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Slot {slot.slotId}: {slot.time}</span>
+                  <span className="ml-2 text-[9px] font-bold text-brand-400">{slot.hoursUsed}h used / {slot.hoursRemaining}h free</span>
                 </div>
                 <div className="space-y-4">
                   {slot.tasks.map((t) => (
@@ -485,6 +481,10 @@ function ShiftTaskCard({
           <div className="text-right">
             <p className="text-xs font-black text-brand-600 dark:text-brand-400">{task.targetSqft || 0} sqft</p>
             <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-black tracking-tighter">Daily Target</p>
+            <p className="text-[8px] text-slate-400 dark:text-zinc-500 mt-0.5">
+              {getStepProductivity(task.step.name).label}: {getStepProductivity(task.step.name).sqftPerHour} sqft/hr
+              {(() => { const hrs = estimateHours(task.step.name, task.targetSqft || task.step.stepSqft || task.roomInteriorSqft || 0); return hrs > 0 ? " \u2248 " + hrs + "h" : ""; })()}
+            </p>
           </div>
         </div>
 
