@@ -912,7 +912,7 @@ export function parseProjectJson(raw: unknown): PaintProject {
     // Enamel / Oil Paint / Water-based Wood Coating: ~100 sqft per Litre (2 coats)
     for (const w of joinery) {
       const sqft = w.totalSqft ?? 0;
-      const qty = Math.round((sqft / 100) * 10) / 10;
+      const qty = Math.ceil((sqft / 100) * 10) / 10;
       if (qty <= 0) continue;
       out.push({
         id: uid('joinmat', idx++),

@@ -859,7 +859,27 @@ export function ensureExteriorMaterials(project: PaintProject): PaintProject {
 
   return {
     ...project,
-    materialBillOfQuantities: [...existing, ...additions],
-    materials: [...(project.materials ?? existing), ...additions],
+    materialBillOfQuantities: deduplicateMaterials([...existing, ...additions]),
+    materials: deduplicateMaterials([...(project.materials ?? existing), ...additions]),
   };
+}
+
+export function deduplicateMaterials(materials: MaterialItem[]): MaterialItem[] {
+  const map = new Map<string, MaterialItem>();
+  for (const m of materials) {
+    const key = `${(m.name ?? '').toLowerCase().trim()}|${(m.category ?? '').toLowerCase().trim()}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...m });
+    } else {
+      existing.totalRequiredQty = Math.round(((existing.totalRequiredQty ?? 0) + (m.totalRequiredQty ?? 0)) * 100) / 100;
+      if (!existing.brand && m.brand) existing.brand = m.brand;
+      if (!existing.vendorName && m.vendorName) existing.vendorName = m.vendorName;
+      if (!existing.vendorId && m.vendorId) existing.vendorId = m.vendorId;
+      if (!existing.unit && m.unit) existing.unit = m.unit;
+      if (!existing.packSize && m.packSize) existing.packSize = m.packSize;
+      if (!existing.unitCost && m.unitCost) existing.unitCost = m.unitCost;
+    }
+  }
+  return Array.from(map.values());
 }
