@@ -1828,7 +1828,9 @@ function DailyTargetAllocatorModal({
         setWarningAlert(null);
       }
 
-      if (step.stepSqft) setTargetSqft(step.stepSqft);
+      const roomArea = selectedRoomObj?.totalSqft ?? selectedRoomObj?.netWallSqft ?? selectedRoomObj?.interiorSqft ?? selectedRoomObj?.exteriorSqft ?? selectedRoomObj?.sqft ?? 0;
+      const stepArea = step.stepSqft ?? roomArea;
+      if (stepArea) setTargetSqft(stepArea);
     }
   };
 
@@ -1976,7 +1978,7 @@ function DailyTargetAllocatorModal({
             >
               <option value="">Select room...</option>
               {rooms.map((r) => (
-                <option key={r.id} value={r.id}>{r.name} ({r.interiorSqft ?? 0} sqft)</option>
+                <option key={r.id} value={r.id}>{r.name} ({r.totalSqft ?? r.netWallSqft ?? r.interiorSqft ?? r.exteriorSqft ?? r.sqft ?? 0} sqft)</option>
               ))}
             </select>
           </div>
@@ -2006,7 +2008,7 @@ function DailyTargetAllocatorModal({
                     disabled={isComp}
                     className={isComp ? 'font-bold text-slate-400 bg-slate-800' : isProg ? 'text-amber-400' : ''}
                   >
-                    {s.stepNumber}. {s.name} ({s.stepSqft || 0} sqft){statusBadge}
+                    {s.stepNumber}. {s.name} ({s.stepSqft ?? selectedRoomObj?.totalSqft ?? selectedRoomObj?.netWallSqft ?? selectedRoomObj?.interiorSqft ?? selectedRoomObj?.exteriorSqft ?? selectedRoomObj?.sqft ?? 0} sqft){statusBadge}
                   </option>
                 );
               })}
